@@ -80,17 +80,21 @@ def run_standby(args: argparse.Namespace, standby_config: StandbyConfig) -> None
         log.info(format_standby_scan_message(watch_directory, current_count, baseline, armed))
 
         if armed and current_count <= baseline:
-            batch_directory = create_standby_batch_directory(target_directory)
-            move_directory_contents(watch_directory, batch_directory)
-
             standby_args = argparse.Namespace(**vars(args))
-            standby_args.directory = batch_directory
             standby_args.merge_subdirs = True
             standby_args.merge_dirs = None
             standby_args.no_merge_subdirs = False
             standby_args.no_video = False
 
-            log.info(f"Standby batch directory: {batch_directory}")
+            if target_resolved == watch_resolved:
+                standby_args.directory = target_directory
+                log.info("Standby processing in place (watch == target)")
+            else:
+                batch_directory = create_standby_batch_directory(target_directory)
+                move_directory_contents(watch_directory, batch_directory)
+                standby_args.directory = batch_directory
+                log.info(f"Standby batch directory: {batch_directory}")
+
             fuse_brackets(standby_args)
 
             if not standby_config.loop:
