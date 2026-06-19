@@ -36,6 +36,33 @@ def install_system_tool(name: str) -> None:
     )
 
 
+def update_system_tool(name: str) -> None:
+    commands = update_commands_for_tool(name)
+    if not commands:
+        raise BracketlapseError(
+            f"Automatic update for {name} is not supported on this system."
+        )
+
+    for command in commands:
+        manager = command[1] if command[0] == "sudo" else command[0]
+        if shutil.which(manager) is None:
+            continue
+        log.info(f"Running updater: {' '.join(command)}")
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+        )
+        emit_command_output(result)
+        if result.returncode == 0:
+            return
+
+    raise BracketlapseError(
+        f"Automatic update failed for {name}. Update it manually and rerun."
+    )
+
+
 def install_commands_for_tool(name: str) -> list[list[str]]:
     system = platform.system().lower()
     package = package_name(name)
@@ -45,6 +72,20 @@ def install_commands_for_tool(name: str) -> list[list[str]]:
         return windows_install_commands(name)
     if system == "linux":
         return linux_install_commands(package)
+    return []
+
+
+def update_commands_for_tool(name: str) -> list[list[str]]:
+    system = platform.system().lower()
+    package = package_name(name)
+    if system == "darwin":
+        if name in {"enfuse", "align_image_stack"}:
+            return [["brew", "upgrade", "hugin"]]
+        return [["brew", "upgrade", package]]
+    if system == "windows":
+        return windows_update_commands(name, package)
+    if system == "linux":
+        return linux_update_commands(package)
     return []
 
 
@@ -80,12 +121,47 @@ def windows_install_commands(name: str) -> list[list[str]]:
     return commands
 
 
+def windows_update_commands(name: str, package: str) -> list[list[str]]:
+    winget_ids = {
+        "ffmpeg": "Gyan.FFmpeg",
+        "go": "GoLang.Go",
+        "git": "Git.Git",
+        "enfuse": "Hugin.Hugin",
+        "align_image_stack": "Hugin.Hugin",
+    }
+    commands = []
+    winget_id = winget_ids.get(name)
+    if winget_id:
+        commands.append([
+            "winget",
+            "upgrade",
+            "--id",
+            winget_id,
+            "-e",
+            "--accept-package-agreements",
+        ])
+    commands.append(["choco", "upgrade", package, "-y"])
+    return commands
+
+
 def linux_install_commands(package: str) -> list[list[str]]:
     commands = [
         ["apt-get", "update"],
         ["apt-get", "install", "-y", package],
         ["dnf", "install", "-y", package],
         ["pacman", "-S", "--noconfirm", package],
+    ]
+    if hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo"):
+        return [["sudo", "-n", *command] for command in commands]
+    return commands
+
+
+def linux_update_commands(package: str) -> list[list[str]]:
+    commands = [
+        ["apt-get", "update"],
+        ["apt-get", "install", "-y", "--only-upgrade", package],
+        ["dnf", "upgrade", "-y", package],
+        ["pacman", "-Syu", "--noconfirm", package],
     ]
     if hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo"):
         return [["sudo", "-n", *command] for command in commands]

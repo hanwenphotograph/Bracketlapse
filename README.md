@@ -33,12 +33,12 @@ missing tools automatically.
 Required runtime tools:
 
 - Hugin command line tools: `enfuse`, and optionally `align_image_stack`.
-- `simple-deflicker` from the `dev_2026` branch.
+- `simple-deflicker` from the `master` branch.
 - `ffmpeg`.
 
 Automatic setup uses a local package manager when available: Homebrew on macOS,
 winget or Chocolatey on Windows, and apt/dnf/pacman on Linux. If
-`simple-deflicker` is missing, Bracketlapse clones the `dev_2026` branch and
+`simple-deflicker` is missing, Bracketlapse clones the `master` branch and
 builds it into `~/.cache/bracketlapse/tools/bin`, which requires `git` and Go.
 If a required tool cannot be prepared automatically, Bracketlapse stops before
 processing starts and reports the missing tool.
@@ -182,6 +182,18 @@ Run `video` without extra arguments to print the video command help:
 
 ```bash
 bracketlapse video
+```
+
+Update runtime dependencies:
+
+```bash
+bracketlapse update
+```
+
+Update only `simple-deflicker`:
+
+```bash
+bracketlapse update simple-deflicker
 ```
 
 ## Useful Options

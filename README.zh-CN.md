@@ -32,10 +32,10 @@ Bracketlapse 启动时会根据当前选择的管线检查所需工具，并尝�
 运行时工具包括：
 
 - Hugin 命令行工具：`enfuse`，以及可选的 `align_image_stack`。
-- `simple-deflicker` 的 `dev_2026` 分支。
+- `simple-deflicker` 的 `master` 分支。
 - `ffmpeg`。
 
-自动准备会优先使用本机包管理器：macOS 使用 Homebrew，Windows 使用 winget 或 Chocolatey，Linux 使用 apt/dnf/pacman。如果缺少 `simple-deflicker`，Bracketlapse 会克隆 `dev_2026` 分支并构建到 `~/.cache/bracketlapse/tools/bin`，这一步需要 `git` 和 Go。
+自动准备会优先使用本机包管理器：macOS 使用 Homebrew，Windows 使用 winget 或 Chocolatey，Linux 使用 apt/dnf/pacman。如果缺少 `simple-deflicker`，Bracketlapse 会克隆 `master` 分支并构建到 `~/.cache/bracketlapse/tools/bin`，这一步需要 `git` 和 Go。
 如果某个必需工具无法自动准备，Bracketlapse 会在正式处理开始前停止，并报告缺少的工具。
 
 在 Windows 上，如果 Hugin 安装在 `D:\Medias\Hugin\bin`，请把这个目录加入当前用户的 `PATH`。
@@ -177,6 +177,18 @@ bracketlapse video "E:\Medias\Images\example\hdr_enfuse" --fps 30 --output hdr_t
 
 ```bash
 bracketlapse video
+```
+
+更新运行时依赖：
+
+```bash
+bracketlapse update
+```
+
+只更新 `simple-deflicker`：
+
+```bash
+bracketlapse update simple-deflicker
 ```
 
 ## 常用选项

@@ -13,6 +13,9 @@ def run_bracketlapse(args: list[str], bin_dir: Path) -> subprocess.CompletedProc
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
     env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
+    env.setdefault("BRACKLAPSE_RUN_DATE", "2026-06-20")
+    env.setdefault("BRACKLAPSE_RUN_START_AT", "08:00")
+    env.setdefault("BRACKLAPSE_RUN_END_AT", "09:00")
     return subprocess.run(
         [sys.executable, "-m", "bracketlapse.cli", *args],
         cwd=PROJECT_ROOT,

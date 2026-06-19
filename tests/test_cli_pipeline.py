@@ -9,6 +9,7 @@ from helpers import write_executable
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import bracketlapse.cli
+import bracketlapse.environment
 
 
 def test_no_arguments_prints_main_help(tmp_path: Path) -> None:
@@ -77,14 +78,14 @@ def test_fuse_pipeline_deflickers_before_video(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr + result.stdout
     assert sorted(path.name for path in (work_dir / "hdr_enfuse").glob("*.jpg")) == [
-        "hdr_00001.jpg",
-        "hdr_00002.jpg",
+        "hdrimg_260620_08-09_00001.jpg",
+        "hdrimg_260620_08-09_00002.jpg",
     ]
     assert sorted(path.name for path in (work_dir / "hdr_deflick").glob("*.jpg")) == [
-        "hdr_00001.jpg",
-        "hdr_00002.jpg",
+        "hdrimg_260620_08-09_00001.jpg",
+        "hdrimg_260620_08-09_00002.jpg",
     ]
-    assert (work_dir / "hdr_video" / "hdr_timelapse.mp4").read_text(encoding="utf-8") == "video\n"
+    assert (work_dir / "hdr_video" / "timelapse_260620_08-09.mp4").read_text(encoding="utf-8") == "video\n"
     assert "mock enfuse debug" not in result.stdout
 
 
@@ -102,8 +103,8 @@ def test_debug_creates_hdr_video_and_prints_debug_logs(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr + result.stdout
     assert "mock enfuse debug" in result.stdout
     assert "mock deflicker debug" in result.stdout
-    assert (work_dir / "hdr_video" / "hdr_timelapse_hdr_debug.mp4").exists()
-    assert (work_dir / "hdr_video" / "hdr_timelapse.mp4").exists()
+    assert (work_dir / "hdr_video" / "timelapse_260620_08-09_hdr_debug.mp4").exists()
+    assert (work_dir / "hdr_video" / "timelapse_260620_08-09.mp4").exists()
 
 
 def test_no_video_still_deflickers_by_default(tmp_path: Path) -> None:
@@ -115,8 +116,8 @@ def test_no_video_still_deflickers_by_default(tmp_path: Path) -> None:
     result = run_bracketlapse([str(work_dir), "--no-merge-subdirs", "--no-video"], bin_dir)
 
     assert result.returncode == 0, result.stderr + result.stdout
-    assert (work_dir / "hdr_enfuse" / "hdr_00001.jpg").exists()
-    assert (work_dir / "hdr_deflick" / "hdr_00001.jpg").exists()
+    assert (work_dir / "hdr_enfuse" / "hdrimg_260620_08-09_00001.jpg").exists()
+    assert (work_dir / "hdr_deflick" / "hdrimg_260620_08-09_00001.jpg").exists()
     assert not (work_dir / "hdr_video").exists()
 
 
@@ -132,9 +133,9 @@ def test_no_deflick_uses_fused_frames_for_video(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr + result.stdout
-    assert (work_dir / "hdr_enfuse" / "hdr_00001.jpg").exists()
+    assert (work_dir / "hdr_enfuse" / "hdrimg_260620_08-09_00001.jpg").exists()
     assert not (work_dir / "hdr_deflick").exists()
-    assert (work_dir / "hdr_video" / "hdr_timelapse.mp4").exists()
+    assert (work_dir / "hdr_video" / "timelapse_260620_08-09.mp4").exists()
 
 
 def test_video_command_only_requires_ffmpeg(tmp_path: Path) -> None:
@@ -151,6 +152,59 @@ def test_video_command_only_requires_ffmpeg(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr + result.stdout
     assert (frames_dir / "out.mp4").read_text(encoding="utf-8") == "video\n"
+
+
+def test_update_command_refreshes_dependencies(tmp_path: Path, monkeypatch) -> None:
+    created = []
+    updated_tools = []
+    cloned = []
+
+    monkeypatch.setattr(bracketlapse.environment, "update_system_tool", lambda name: updated_tools.append(name))
+    monkeypatch.setattr(bracketlapse.environment, "ensure_system_tool", lambda name: name)
+    monkeypatch.setattr(bracketlapse.environment, "clone_or_update_simple_deflicker", lambda git: cloned.append(git))
+
+    def fake_build(go, output):
+        created.append((go, output))
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("simple-deflicker\n", encoding="utf-8")
+
+    monkeypatch.setattr(bracketlapse.environment, "build_simple_deflicker", fake_build)
+    monkeypatch.setattr(bracketlapse.environment, "simple_deflicker_bin_dir", lambda: tmp_path / ".cache" / "bracketlapse" / "tools" / "bin")
+    monkeypatch.setattr(bracketlapse.environment, "tool_cache_dir", lambda: tmp_path / ".cache" / "bracketlapse" / "tools")
+
+    result = bracketlapse.cli.main(["update"])
+
+    assert result == 0
+    assert updated_tools == ["enfuse", "ffmpeg", "git", "go"]
+    assert cloned == ["git"]
+    assert created
+    assert (tmp_path / ".cache" / "bracketlapse" / "tools" / "bin" / "simple-deflicker").exists()
+
+
+def test_update_command_can_target_simple_deflicker(tmp_path: Path, monkeypatch) -> None:
+    updated_tools = []
+    rebuilt = []
+
+    monkeypatch.setattr(bracketlapse.environment, "update_system_tool", lambda name: updated_tools.append(name))
+    monkeypatch.setattr(bracketlapse.environment, "ensure_system_tool", lambda name: name)
+
+    def fake_update_simple_deflicker():
+        rebuilt.append(True)
+        return tmp_path / ".cache" / "bracketlapse" / "tools" / "bin" / "simple-deflicker"
+
+    monkeypatch.setattr(bracketlapse.environment, "update_simple_deflicker", fake_update_simple_deflicker)
+
+    result = bracketlapse.cli.main(["update", "simple-deflicker"])
+
+    assert result == 0
+    assert updated_tools == []
+    assert rebuilt == [True]
+
+
+def test_update_command_rejects_unknown_dependency() -> None:
+    result = bracketlapse.cli.main(["update", "unknown-tool"])
+
+    assert result == 1
 
 
 def test_fuse_failure_does_not_create_output_frame(tmp_path: Path) -> None:
@@ -170,4 +224,4 @@ exit 1
 
     assert result.returncode == 1
     assert "enfuse" in result.stderr
-    assert not (work_dir / "hdr_enfuse" / "hdr_00001.jpg").exists()
+    assert not (work_dir / "hdr_enfuse" / "hdrimg_260620_08-09_00001.jpg").exists()
