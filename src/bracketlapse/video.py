@@ -13,12 +13,15 @@ from .common import (
     resolve_processing_directory,
     run_command,
 )
+from .naming import build_video_name
 from .images import find_images
 
 
 def build_video(args: argparse.Namespace) -> None:
     directory = resolve_processing_directory(args.directory)
     output = resolve_inside(directory, args.output)
+    if args.output == Path("timelapse.mp4"):
+        output = resolve_inside(directory, Path(build_video_name()))
     build_video_from_directory(
         directory=directory,
         output=output,

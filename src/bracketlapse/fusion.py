@@ -19,6 +19,7 @@ from .grouping import build_fusion_groups, detect_sequence_gap_ranges
 from .grouping import format_sequence_gap_ranges
 from .images import find_images, find_images_in_directories, find_merge_candidates
 from .images import resolve_source_directories
+from .naming import build_frame_name, build_video_name
 from .video import build_video_from_directory
 
 
@@ -67,7 +68,7 @@ def fuse_brackets(args: argparse.Namespace) -> None:
 
     for offset, group in enumerate(groups):
         frame_number = args.start_number + offset
-        output = output_dir / f"hdr_{frame_number:05d}.{args.ext}"
+        output = output_dir / build_frame_name(frame_number, args.ext)
         if output.exists() and not args.overwrite:
             log.info(f"[{offset + 1}/{len(groups)}] Skip existing {output.name}")
             continue
@@ -83,6 +84,9 @@ def fuse_brackets(args: argparse.Namespace) -> None:
 
     video_source_dir = output_dir
     video_pattern = f"*.{args.ext}"
+    default_video_output = resolve_inside(directory, Path("hdr_video") / "timelapse.mp4")
+    if video_output == default_video_output:
+        video_output = resolve_inside(directory, Path("hdr_video") / build_video_name())
     if args.debug and not args.no_deflick:
         log.info("Creating HDR debug video before deflicker.")
         build_video_from_directory(

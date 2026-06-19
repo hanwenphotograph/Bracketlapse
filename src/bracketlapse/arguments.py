@@ -167,8 +167,8 @@ def add_video_encoding_arguments(parser: argparse.ArgumentParser, *, automatic: 
         parser.add_argument(
             "--video-output",
             type=Path,
-            default=Path("hdr_video") / "hdr_timelapse.mp4",
-            help="Automatic video output path. Default: hdr_video/hdr_timelapse.mp4",
+            default=Path("hdr_video") / "timelapse.mp4",
+            help="Automatic video output path. Default: date/time-based name inside hdr_video",
         )
     parser.add_argument("--crf", type=int, default=18, help="x265 CRF quality. Default: 18")
     parser.add_argument("--preset", default="slow", help="x265 preset. Default: slow")
