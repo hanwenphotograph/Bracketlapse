@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 
 from .arguments import build_parser
+from .build_info import write_build_info
 from .common import BracketlapseError, log
 from .environment import ensure_runtime_environment, update_runtime_environment
 from .fusion import fuse_brackets
@@ -12,6 +13,9 @@ from .video import build_video
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv == ["--build-info"]:
+        write_build_info()
+        return 0
     try:
         standby_config, normalized_argv = extract_standby_config(argv)
         parser = build_parser(normalized_argv)

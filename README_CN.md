@@ -68,6 +68,12 @@ bracketlapse "E:\Medias\Images\example"
 bracketlapse
 ```
 
+输出机器可读的应用版本、源码分支、提交号和 UTC 构建时间：
+
+```bash
+bracketlapse --build-info
+```
+
 待机模式会持续监控一个目录，并在拍摄继续进行时立即融合每个新增的完整包围曝光组。递归目录项数量保持 `静息判定时间` 不变后，程序会补齐遗漏的 HDR 帧，只执行一次去闪并导出最终视频：
 
 ```bash

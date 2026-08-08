@@ -73,6 +73,12 @@ If you do not pass any arguments, Bracketlapse prints the full help text:
 bracketlapse
 ```
 
+Print machine-readable application version, source branch, commit, and UTC build time:
+
+```bash
+bracketlapse --build-info
+```
+
 Standby mode watches one directory and immediately fuses each newly completed bracket group while capture continues. After the recursive entry count remains unchanged for `QUIET_SECONDS`, it fills any missing HDR frames, runs deflicker once, and exports the final video:
 
 ```bash
