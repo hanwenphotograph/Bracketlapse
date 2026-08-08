@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 import tempfile
 
@@ -10,20 +11,29 @@ from .common import (
     log,
     require_tool,
     resolve_inside,
-    resolve_processing_directory,
     run_command,
 )
 from .deflicker import deflick_frames, ensure_deflick_supported_extension
 from .enfuse import align_group, build_enfuse_command
-from .grouping import build_fusion_groups, detect_sequence_gap_ranges
-from .grouping import format_sequence_gap_ranges
-from .images import find_images, find_images_in_directories, find_merge_candidates
+from .events import emit_hdr_ready
+from .fusion_input import (
+    is_current_directory_argument,
+    prepare_fusion_files,
+    resolve_fuse_working_directory,
+)
+from .grouping import build_fusion_groups
 from .images import resolve_source_directories
 from .naming import build_frame_name, build_video_name
 from .video import build_video_from_directory
 
 
-def fuse_brackets(args: argparse.Namespace) -> None:
+@dataclass(frozen=True)
+class FusionResult:
+    available_groups: int
+    generated_outputs: tuple[Path, ...]
+
+
+def fuse_brackets(args: argparse.Namespace) -> FusionResult:
     directory = resolve_fuse_working_directory(args)
     output_dir = resolve_inside(directory, args.output)
     deflick_output_dir = resolve_inside(directory, args.deflick_output)
@@ -54,20 +64,33 @@ def fuse_brackets(args: argparse.Namespace) -> None:
             )
         ),
     )
-    files = prepare_fusion_files(source_dirs, args)
+    allow_empty = bool(getattr(args, "allow_empty", False))
+    files = prepare_fusion_files(source_dirs, args, allow_empty=allow_empty)
+    if not files:
+        return FusionResult(0, ())
     groups = build_fusion_groups(files, args.group_size)
     if not groups:
-        raise BracketlapseError("No complete HDR groups can be formed after sequence gap detection.")
+        if allow_empty:
+            return FusionResult(0, ())
+        raise BracketlapseError(
+            "No complete HDR groups can be formed after sequence gap detection."
+        )
+    available_groups = len(groups)
+    group_offset = int(getattr(args, "group_offset", 0))
+    groups = groups[group_offset:]
     if args.limit is not None:
         groups = groups[: args.limit]
+    if not groups:
+        return FusionResult(available_groups, ())
 
     log.info(f"Working directory: {directory}")
     log.info(f"Input directories: {format_paths(source_dirs)}")
     log.info(f"Found {len(files)} JPG files, {len(groups)} group(s) to process.")
     log.info(f"Output directory: {output_dir}")
 
+    generated_outputs: list[Path] = []
     for offset, group in enumerate(groups):
-        frame_number = args.start_number + offset
+        frame_number = args.start_number + group_offset + offset
         output = output_dir / build_frame_name(frame_number, args.ext)
         if output.exists() and not args.overwrite:
             log.info(f"[{offset + 1}/{len(groups)}] Skip existing {output.name}")
@@ -81,10 +104,14 @@ def fuse_brackets(args: argparse.Namespace) -> None:
                 run_command(build_enfuse_command(enfuse, output, aligned))
         else:
             run_command(build_enfuse_command(enfuse, output, group))
+        generated_outputs.append(output)
+        emit_hdr_ready(output, frame_number)
 
     video_source_dir = output_dir
     video_pattern = f"*.{args.ext}"
-    default_video_output = resolve_inside(directory, Path("hdr_video") / "timelapse.mp4")
+    default_video_output = resolve_inside(
+        directory, Path("hdr_video") / "timelapse.mp4"
+    )
     if video_output == default_video_output:
         video_output = resolve_inside(directory, Path("hdr_video") / build_video_name())
     if args.debug and not args.no_deflick:
@@ -130,67 +157,7 @@ def fuse_brackets(args: argparse.Namespace) -> None:
         )
 
     log.info("Done.")
-
-
-def prepare_fusion_files(source_dirs: list[Path], args: argparse.Namespace) -> list[Path]:
-    files = find_images_in_directories(source_dirs, args.pattern, args.sort)
-    if not files:
-        raise BracketlapseError(
-            f"No image files matched {args.pattern!r} in {format_paths(source_dirs)}"
-        )
-    if args.group_size < 2:
-        raise BracketlapseError("--group-size must be at least 2")
-    if args.fps <= 0:
-        raise BracketlapseError("--fps must be greater than zero")
-
-    remainder = len(files) % args.group_size
-    if remainder:
-        dropped_files = files[-remainder:]
-        files = files[:-remainder]
-        log.warn(
-            f"found {len(files) + remainder} files, which is not divisible by "
-            f"group size {args.group_size}; dropping the last {remainder} file(s): "
-            f"{format_paths(dropped_files)}"
-        )
-    if not files:
-        raise BracketlapseError(
-            f"No complete groups can be formed with group size {args.group_size}."
-        )
-
-    sequence_gap_ranges = detect_sequence_gap_ranges(files)
-    if sequence_gap_ranges:
-        log.warn(
-            "sequence gaps detected before HDR fusion; "
-            f"incomplete groups will be skipped: {format_sequence_gap_ranges(sequence_gap_ranges)}"
-        )
-    return files
-
-
-def resolve_fuse_working_directory(args: argparse.Namespace) -> Path:
-    if args.directory is not None:
-        return resolve_processing_directory(args.directory)
-
-    current_directory = Path.cwd().resolve()
-    if args.merge_subdirs or args.merge_dirs or args.no_merge_subdirs:
-        return current_directory
-
-    output_dir = resolve_inside(current_directory, args.output)
-    deflick_output_dir = resolve_inside(current_directory, args.deflick_output)
-    video_output = resolve_inside(current_directory, args.video_output)
-    candidates = find_merge_candidates(
-        directory=current_directory,
-        excluded_paths=[output_dir, deflick_output_dir, video_output.parent],
-        pattern=args.pattern,
-        sort_mode=args.sort,
-    )
-    if candidates:
-        return current_directory
-
-    return resolve_processing_directory(None)
-
-
-def is_current_directory_argument(value: Path) -> bool:
-    return value.expanduser().resolve() == Path.cwd().resolve()
+    return FusionResult(available_groups, tuple(generated_outputs))
 
 
 def make_debug_video_output(output: Path) -> Path:

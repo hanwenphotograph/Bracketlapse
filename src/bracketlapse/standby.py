@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import datetime
-import os
 from pathlib import Path
-import shutil
 import time
 
 from .common import BracketlapseError, format_fps, log, parse_float
-from .common import resolve_processing_directory
 from .fusion import fuse_brackets
+from .standby_paths import (
+    count_directory_entries,
+    create_standby_batch_directory,
+    move_directory_contents,
+    resolve_standby_quiet_seconds,
+    resolve_standby_target_directory,
+    resolve_standby_watch_directory,
+)
 
 
 @dataclass
@@ -46,7 +50,9 @@ def extract_standby_config(argv: list[str]) -> tuple[StandbyConfig | None, list[
     standby_config = StandbyConfig(
         watch_directory=Path(values[0]) if len(values) > 0 else None,
         target_directory=Path(values[1]) if len(values) > 1 else None,
-        quiet_seconds=parse_float(values[2], "quiet seconds") if len(values) > 2 else None,
+        quiet_seconds=parse_float(values[2], "quiet seconds")
+        if len(values) > 2
+        else None,
         loop=loop,
     )
     remaining = [token for index, token in enumerate(argv) if index not in consumed]
@@ -59,8 +65,12 @@ def run_standby(args: argparse.Namespace, standby_config: StandbyConfig) -> None
     quiet_seconds = resolve_standby_quiet_seconds(standby_config.quiet_seconds)
     watch_resolved = watch_directory.resolve()
     target_resolved = target_directory.resolve()
-    if target_resolved != watch_resolved and target_resolved.is_relative_to(watch_resolved):
-        raise BracketlapseError("Target directory cannot be nested inside the watch directory.")
+    if target_resolved != watch_resolved and target_resolved.is_relative_to(
+        watch_resolved
+    ):
+        raise BracketlapseError(
+            "Target directory cannot be nested inside the watch directory."
+        )
 
     log.info(f"Standby watch directory: {watch_directory}")
     log.info(f"Standby target directory: {target_directory}")
@@ -69,132 +79,79 @@ def run_standby(args: argparse.Namespace, standby_config: StandbyConfig) -> None
 
     baseline = count_directory_entries(watch_directory)
     armed = False
+    last_change_at = time.monotonic()
+    processed_groups = 0
+    poll_seconds = min(0.25, quiet_seconds)
     log.info(
         f"Standby initial recursive count: {baseline}. "
         "Waiting for growth before listening."
     )
 
     while True:
-        time.sleep(quiet_seconds)
+        time.sleep(poll_seconds)
         current_count = count_directory_entries(watch_directory)
-        log.info(format_standby_scan_message(watch_directory, current_count, baseline, armed))
-
-        if armed and current_count <= baseline:
-            standby_args = argparse.Namespace(**vars(args))
-            standby_args.merge_subdirs = True
-            standby_args.merge_dirs = None
-            standby_args.no_merge_subdirs = False
-            standby_args.no_video = False
-
-            if target_resolved == watch_resolved:
-                standby_args.directory = target_directory
-                log.info("Standby processing in place (watch == target)")
-            else:
-                batch_directory = create_standby_batch_directory(target_directory)
-                move_directory_contents(watch_directory, batch_directory)
-                standby_args.directory = batch_directory
-                log.info(f"Standby batch directory: {batch_directory}")
-
-            fuse_brackets(standby_args)
-
-            if not standby_config.loop:
-                return
-
-            baseline = count_directory_entries(watch_directory)
-            armed = False
-            continue
-
-        if current_count > baseline:
+        grew = current_count > baseline
+        if grew:
             if not armed:
                 log.info(
                     f"Standby detected growth: {baseline} -> {current_count}. "
                     "Listening for quiet interval."
                 )
-            baseline = current_count
             armed = True
+            last_change_at = time.monotonic()
+        if current_count != baseline:
+            baseline = current_count
         elif not armed:
             continue
 
+        if armed and grew and target_resolved == watch_resolved:
+            processed_groups = _fuse_available_groups(
+                args, target_directory, processed_groups
+            )
 
-def resolve_standby_watch_directory(value: Path | None) -> Path:
-    return resolve_processing_directory(value)
-
-
-def resolve_standby_target_directory(value: Path | None) -> Path:
-    if value is None:
-        raw = input("Target directory: ").strip().strip('"')
-        if not raw:
-            raise BracketlapseError("No target directory was provided.")
-        value = Path(raw)
-
-    directory = value.expanduser().resolve()
-    if directory.exists() and not directory.is_dir():
-        raise BracketlapseError(f"Target path is not a directory: {directory}")
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
-
-
-def resolve_standby_quiet_seconds(value: float | None) -> float:
-    if value is None:
-        raw = input("Quiet seconds: ").strip()
-        if not raw:
-            raise BracketlapseError("No quiet seconds were provided.")
-        value = parse_float(raw, "quiet seconds")
-    if value <= 0:
-        raise BracketlapseError("Quiet seconds must be greater than zero.")
-    return value
-
-
-def count_directory_entries(directory: Path) -> int:
-    total = 0
-    try:
-        with os.scandir(directory) as entries:
-            for entry in entries:
-                total += 1
-                if entry.is_dir(follow_symlinks=False):
-                    total += count_directory_entries(Path(entry.path))
-    except OSError as exc:
-        log.warn(f"skipping unreadable directory {directory}: {exc}")
-    return total
-
-
-def create_standby_batch_directory(target_directory: Path) -> Path:
-    date_prefix = datetime.now().strftime("%Y%m%d")
-    candidate = target_directory / date_prefix
-    suffix = 1
-    while candidate.exists():
-        candidate = target_directory / f"{date_prefix}-{suffix}"
-        suffix += 1
-    candidate.mkdir(parents=True, exist_ok=False)
-    return candidate
-
-
-def move_directory_contents(source: Path, destination: Path) -> None:
-    for entry in list(source.iterdir()):
-        if entry.resolve() == destination.resolve():
+        if time.monotonic() - last_change_at < quiet_seconds:
             continue
-        shutil.move(str(entry), str(destination / entry.name))
+
+        _finalize_standby(args, watch_directory, target_directory)
+        if not standby_config.loop:
+            return
+        baseline = count_directory_entries(watch_directory)
+        last_change_at = time.monotonic()
+        processed_groups = 0
+        armed = False
 
 
-def format_standby_scan_message(
-    watch_directory: Path,
-    current_count: int,
-    baseline: int,
-    armed: bool,
-) -> str:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    state = "监听中" if armed else "待机中"
-    if not armed and current_count > baseline:
-        result = (
-            f"检测到增长，当前递归计数 {current_count}，"
-            f"较启动基线增加 {current_count - baseline}，即将开始监听"
-        )
-    elif not armed:
-        result = f"等待新文件，当前递归计数 {current_count}，基线 {baseline}"
-    elif current_count > baseline:
-        result = f"检测到新增，当前递归计数 {current_count}，较上次增加 {current_count - baseline}"
-    elif current_count == baseline:
-        result = f"未增加，当前递归计数 {current_count}，与上次相同"
+def _standby_args(args: argparse.Namespace, directory: Path) -> argparse.Namespace:
+    standby_args = argparse.Namespace(**vars(args))
+    standby_args.directory = directory
+    standby_args.merge_subdirs = True
+    standby_args.merge_dirs = None
+    standby_args.no_merge_subdirs = False
+    return standby_args
+
+
+def _fuse_available_groups(
+    args: argparse.Namespace, directory: Path, processed_groups: int
+) -> int:
+    stream_args = _standby_args(args, directory)
+    stream_args.no_deflick = True
+    stream_args.no_video = True
+    stream_args.allow_empty = True
+    stream_args.group_offset = processed_groups
+    result = fuse_brackets(stream_args)
+    return result.available_groups
+
+
+def _finalize_standby(
+    args: argparse.Namespace, watch_directory: Path, target_directory: Path
+) -> None:
+    if target_directory.resolve() == watch_directory.resolve():
+        batch_directory = target_directory
+        log.info("Standby processing in place (watch == target)")
     else:
-        result = f"未增加，当前递归计数 {current_count}，较上次减少 {baseline - current_count}"
-    return f"[{timestamp}] {state}：{watch_directory}，{result}"
+        batch_directory = create_standby_batch_directory(target_directory)
+        move_directory_contents(watch_directory, batch_directory)
+        log.info(f"Standby batch directory: {batch_directory}")
+    standby_args = _standby_args(args, batch_directory)
+    standby_args.no_video = False
+    fuse_brackets(standby_args)

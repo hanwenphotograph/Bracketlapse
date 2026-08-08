@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  English | <a href="README.zh-CN.md">简体中文</a>
+  <a href="README.md">English</a> | <a href="README_CN.md">简体中文</a>
 </p>
 
 # Bracketlapse
@@ -73,13 +73,19 @@ If you do not pass any arguments, Bracketlapse prints the full help text:
 bracketlapse
 ```
 
-Standby mode watches one directory until its recursive entry count stops increasing, then moves everything into a dated folder under the target directory and runs the normal fusion/video flow there:
+Standby mode watches one directory and immediately fuses each newly completed bracket group while capture continues. After the recursive entry count remains unchanged for `QUIET_SECONDS`, it fills any missing HDR frames, runs deflicker once, and exports the final video:
 
 ```bash
 bracketlapse --standby WATCH_DIR TARGET_DIR QUIET_SECONDS [loop]
 ```
 
-It prints a status log every QUIET_SECONDS interval while listening.
+In-place standby (`WATCH_DIR == TARGET_DIR`) streams HDR frames without launching a new Bracketlapse process for every group. A successful frame emits one machine-readable line for orchestrators:
+
+```text
+BRACKETLAPSE_EVENT {"event":"hdr_ready","frame_number":1,"path":"/absolute/path/to/frame.jpg"}
+```
+
+When the watch and target directories differ, Bracketlapse preserves the dated-folder behavior and starts processing after the quiet interval.
 
 If a folder named like `20260609` already exists, the next one becomes `20260609-1`, then `20260609-2`, and so on.
 

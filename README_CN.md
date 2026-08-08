@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> | 简体中文
+  <a href="README.md">English</a> | <a href="README_CN.md">简体中文</a>
 </p>
 
 # Bracketlapse
@@ -68,13 +68,19 @@ bracketlapse "E:\Medias\Images\example"
 bracketlapse
 ```
 
-待机模式会持续监控一个目录，直到其递归文件数在相邻两次扫描之间不再增加，然后把该目录内的全部内容移动到目标目录下当天日期命名的文件夹中，再在该文件夹内继续执行普通的合成和视频流程：
+待机模式会持续监控一个目录，并在拍摄继续进行时立即融合每个新增的完整包围曝光组。递归目录项数量保持 `静息判定时间` 不变后，程序会补齐遗漏的 HDR 帧，只执行一次去闪并导出最终视频：
 
 ```bash
 bracketlapse --standby 监听目录 目标目录 静息判定时间 [loop]
 ```
 
-监听期间会每隔一次参数3的时长输出一条状态日志。
+原地待机模式（`监听目录 == 目标目录`）会持续生成 HDR 帧，不会为每组重复启动 Bracketlapse。每张图片成功生成后会为编排程序输出一行机器可读事件：
+
+```text
+BRACKETLAPSE_EVENT {"event":"hdr_ready","frame_number":1,"path":"/图片绝对路径/frame.jpg"}
+```
+
+监听目录与目标目录不同时，Bracketlapse 会保留日期文件夹行为，并在静息判定结束后开始处理。
 
 如果当天的 `20260609` 已经存在，后续会自动使用 `20260609-1`、`20260609-2` 这样的名称。
 
