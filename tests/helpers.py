@@ -9,7 +9,9 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_bracketlapse(args: list[str], bin_dir: Path) -> subprocess.CompletedProcess[str]:
+def run_bracketlapse(
+    args: list[str], bin_dir: Path
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
     env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
@@ -53,7 +55,8 @@ printf "fused\\n" > "$out"
         """#!/bin/sh
 for last do true; done
 mkdir -p "$(dirname "$last")"
-printf "mock ffmpeg debug\\n"
+printf "frame=1\\nprogress=continue\\nframe=999\\nprogress=end\\n"
+printf "mock ffmpeg debug\\n" >&2
 printf "video\\n" > "$last"
 """,
     )
@@ -80,4 +83,6 @@ cp "$src"/*.jpg "$dst"/
 def create_input_frames(directory: Path, count: int) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     for number in range(1, count + 1):
-        (directory / f"{number:04d}.jpg").write_text(f"input {number}\n", encoding="utf-8")
+        (directory / f"{number:04d}.jpg").write_text(
+            f"input {number}\n", encoding="utf-8"
+        )

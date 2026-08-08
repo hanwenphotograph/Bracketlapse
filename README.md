@@ -91,6 +91,17 @@ In-place standby (`WATCH_DIR == TARGET_DIR`) streams HDR frames without launchin
 BRACKETLAPSE_EVENT {"event":"hdr_ready","frame_number":1,"path":"/absolute/path/to/frame.jpg"}
 ```
 
+The final, non-debug video export emits machine-readable FFmpeg progress as
+`video_started`, `video_progress`, and `video_completed` events. Each event
+contains the absolute output `path` plus `completed` and `total` frame counts:
+
+```text
+BRACKETLAPSE_EVENT {"event":"video_progress","path":"/absolute/path/to/video.mp4","completed":42,"total":100}
+```
+
+`video_completed` is emitted only after FFmpeg exits successfully. The optional
+pre-deflicker debug video does not emit these events.
+
 When the watch and target directories differ, Bracketlapse preserves the dated-folder behavior and starts processing after the quiet interval.
 
 If a folder named like `20260609` already exists, the next one becomes `20260609-1`, then `20260609-2`, and so on.

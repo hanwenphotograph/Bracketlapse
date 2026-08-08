@@ -36,7 +36,7 @@ def test_version_does_not_prepare_runtime(tmp_path: Path) -> None:
     result = run_bracketlapse(["--version"], tmp_path / "bin")
 
     assert result.returncode == 0
-    assert result.stdout.strip() == "bracketlapse 0.3.0"
+    assert result.stdout.strip() == "bracketlapse 0.4.0"
     assert "Checking runtime environment" not in result.stdout
 
 
@@ -45,7 +45,7 @@ def test_build_info_is_machine_readable(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     document = json.loads(result.stdout)
-    assert document["version"] == "0.3.0"
+    assert document["version"] == "0.4.0"
     assert document["branch"]
     assert document["commit"]
     datetime.fromisoformat(document["build_time"].replace("Z", "+00:00"))

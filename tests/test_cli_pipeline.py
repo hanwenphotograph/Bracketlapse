@@ -81,8 +81,19 @@ def test_fuse_pipeline_deflickers_before_video(tmp_path: Path) -> None:
         for line in result.stdout.splitlines()
         if line.startswith("BRACKETLAPSE_EVENT ")
     ]
-    assert len(event_lines) == 2
-    assert [json.loads(line)["frame_number"] for line in event_lines] == [1, 2]
+    events = [json.loads(line) for line in event_lines]
+    hdr_events = [event for event in events if event["event"] == "hdr_ready"]
+    video_events = [event for event in events if event["event"].startswith("video_")]
+    assert [event["frame_number"] for event in hdr_events] == [1, 2]
+    assert [event["event"] for event in video_events] == [
+        "video_started",
+        "video_progress",
+        "video_progress",
+        "video_completed",
+    ]
+    assert [event["completed"] for event in video_events] == [0, 1, 2, 2]
+    assert all(event["total"] == 2 for event in video_events)
+    assert all(Path(event["path"]).is_absolute() for event in video_events)
 
 
 def test_debug_creates_hdr_video_and_prints_debug_logs(tmp_path: Path) -> None:
@@ -101,6 +112,19 @@ def test_debug_creates_hdr_video_and_prints_debug_logs(tmp_path: Path) -> None:
     assert "mock deflicker debug" in result.stdout
     assert (work_dir / "hdr_video" / "timelapse_260620_08-09_hdr_debug.mp4").exists()
     assert (work_dir / "hdr_video" / "timelapse_260620_08-09.mp4").exists()
+    events = [
+        json.loads(line.removeprefix("BRACKETLAPSE_EVENT "))
+        for line in result.stdout.splitlines()
+        if line.startswith("BRACKETLAPSE_EVENT ")
+    ]
+    video_events = [event for event in events if event["event"].startswith("video_")]
+    assert [event["event"] for event in video_events] == [
+        "video_started",
+        "video_progress",
+        "video_progress",
+        "video_completed",
+    ]
+    assert all("_hdr_debug" not in event["path"] for event in video_events)
 
 
 def test_no_video_still_deflickers_by_default(tmp_path: Path) -> None:

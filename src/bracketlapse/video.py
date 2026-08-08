@@ -11,8 +11,9 @@ from .common import (
     require_tool,
     resolve_inside,
     resolve_processing_directory,
-    run_command,
 )
+from .events import emit_video_completed, emit_video_progress, emit_video_started
+from .ffmpeg_progress import run_ffmpeg_with_progress
 from .naming import build_video_name
 from .images import find_images
 
@@ -47,6 +48,7 @@ def build_video_from_directory(
     preset: str,
     overwrite: bool,
     skip_existing: bool,
+    report_progress: bool = True,
 ) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -54,7 +56,9 @@ def build_video_from_directory(
         if skip_existing:
             log.info(f"Skip existing video: {output}")
             return
-        raise BracketlapseError(f"Output already exists: {output}. Use --overwrite to replace it.")
+        raise BracketlapseError(
+            f"Output already exists: {output}. Use --overwrite to replace it."
+        )
     if fps <= 0:
         raise BracketlapseError("--fps must be greater than zero")
 
@@ -78,6 +82,8 @@ def build_video_from_directory(
             crf=crf,
             preset=preset,
             overwrite=overwrite,
+            total_frames=len(files),
+            report_progress=report_progress,
         )
 
 
@@ -89,6 +95,8 @@ def render_video_file(
     crf: int,
     preset: str,
     overwrite: bool,
+    total_frames: int,
+    report_progress: bool = True,
 ) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     log.info(f"Creating video: {output}")
@@ -101,6 +109,11 @@ def render_video_file(
         "0",
         "-i",
         str(concat_file),
+        "-progress",
+        "pipe:1",
+        "-nostats",
+        "-loglevel",
+        "error",
         "-r",
         format_fps(fps),
         "-c:v",
@@ -115,7 +128,19 @@ def render_video_file(
         "yuv420p",
         str(output),
     ]
-    run_command(command)
+    if report_progress:
+        emit_video_started(output, total_frames)
+
+    def report_frame(completed: int) -> None:
+        emit_video_progress(output, completed, total_frames)
+
+    run_ffmpeg_with_progress(
+        command,
+        total_frames,
+        report_frame if report_progress else None,
+    )
+    if report_progress:
+        emit_video_completed(output, total_frames)
 
 
 def write_ffconcat(path: Path, files: list[Path], frame_duration: float) -> None:

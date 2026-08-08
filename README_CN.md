@@ -86,6 +86,17 @@ bracketlapse --standby 监听目录 目标目录 静息判定时间 [loop]
 BRACKETLAPSE_EVENT {"event":"hdr_ready","frame_number":1,"path":"/图片绝对路径/frame.jpg"}
 ```
 
+最终的非调试视频导出会发送 `video_started`、`video_progress` 和
+`video_completed` 三类 FFmpeg 机器可读进度事件。每个事件都包含绝对输出
+`path` 以及 `completed`、`total` 帧数：
+
+```text
+BRACKETLAPSE_EVENT {"event":"video_progress","path":"/视频绝对路径/video.mp4","completed":42,"total":100}
+```
+
+只有 FFmpeg 成功退出后才会发送 `video_completed`。去闪前生成的可选调试视频
+不会发送这些事件。
+
 监听目录与目标目录不同时，Bracketlapse 会保留日期文件夹行为，并在静息判定结束后开始处理。
 
 如果当天的 `20260609` 已经存在，后续会自动使用 `20260609-1`、`20260609-2` 这样的名称。

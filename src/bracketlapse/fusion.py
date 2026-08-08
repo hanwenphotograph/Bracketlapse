@@ -126,6 +126,7 @@ def fuse_brackets(args: argparse.Namespace) -> FusionResult:
             preset=args.preset,
             overwrite=args.overwrite,
             skip_existing=True,
+            report_progress=False,
         )
 
     if not args.no_deflick:
